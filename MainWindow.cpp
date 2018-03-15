@@ -175,6 +175,7 @@ createLabelEntry(QString text,
     QLabel *res = new QLabel();
     res->setMinimumWidth(minL);
     res->setMaximumWidth(maxL);
+    res->setAlignment(Qt::AlignRight);
 
     entryLayout->addWidget(entryLabel);
     entryLayout->addStretch();
@@ -202,14 +203,14 @@ MainWindow::MainWindow(QWidget *parent) :
     numFloors(0), periods(0), buildingW(0), buildingH(1), storyK(0),
     weights(0), k(0), fy(0), b(0), dampRatios(0), floorHeights(0), storyHeights(0),
     dampingRatio(0.02), g(386.4), dt(0), gMotion(0),
-    includePDelta(true), needAnalysis(true), analysisFailed(false), eqData(0),
+    includePDelta(true), needAnalysis(true), analysisFailed(false), motionData(0),
     dispResponses(0), storyForceResponses(0), storyDriftResponses(0), maxDisp(1),
     movingSlider(false), fMinSelected(-1),fMaxSelected(-1), sMinSelected(-1),sMaxSelected(-1),
     time(1561),excitationValues(1561), graph(0), groupTracer(0),floorSelected(-1),storySelected(-1)
 {
 
     scaleFactor = 1.0;
-
+    eigValues = new Vector;
     createActions();
 
     // create a main layout
@@ -249,7 +250,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
        QString recordString("ElCentro");
        records.insert(std::make_pair(QString("ElCentro"), elCentro));
-       inMotion->addItem(recordString);
+       eqMotion->addItem(recordString);
     }
 
     QFile fileR(":/images/Rinaldi.json");
@@ -262,7 +263,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
        QString recordString("Northridge-Rinaldi");
        records.insert(std::make_pair(QString("Northridge-Rinaldi"), rinaldi));
-       inMotion->addItem(recordString);
+       eqMotion->addItem(recordString);
     }
 
     // create a basic model with defaults
@@ -438,13 +439,28 @@ void MainWindow::setBasicModel(int numF, double W, double H, double K, double ze
 
     this->updatePeriod();
 
+    scaleFactorEQ->setText(QString::number(scaleFactor));
     inWeight->setText(QString::number(buildingW));
     inK->setText(QString::number(storyK));
     inFloors->setText(QString::number(numF));
     inHeight->setText(QString::number(buildingH));
     inDamping->setText(QString::number(zeta));
-  //  inGravity->setText(QString::number(g));
+
+    periodHarmonicMotion = 0.5;
+    magHarmonicMotion = 1.0;
+    dtHarmonicMotion = 0.02;
+    tFinalHarmonicMotion = 10.0;
+
+    periodHarmonic->setText(QString::number(periodHarmonicMotion));
+    magHarmonic->setText(QString::number(magHarmonicMotion));
+    dtHarmonic->setText(QString::number(dtHarmonicMotion));
+    tFinalHarmonic->setText(QString::number(tFinalHarmonicMotion));
     needAnalysis = true;
+
+    numStepHarmonic = tFinalHarmonicMotion/dtHarmonicMotion+1;
+    harmonicData = new Vector(numStepHarmonic);
+    for (int i=0; i<numStepHarmonic; i++)
+        (*harmonicData)(i) = magHarmonicMotion*sin(2*3.14159*i*dtHarmonicMotion/periodHarmonicMotion);
 
     this->reset();
 
@@ -468,6 +484,85 @@ MainWindow::on_includePDeltaChanged(int state)
 
     this->reset();
 }
+
+void
+MainWindow::on_magHarmonicChanged()
+{
+    QString newText =  magHarmonic->text();
+    double  newDouble = newText.toDouble();
+    if (newDouble != magHarmonicMotion) {
+        magHarmonicMotion = newDouble;
+
+        for (int i=0; i<numStepHarmonic; i++)
+            (*harmonicData)(i) = magHarmonicMotion*sin(2*3.14159*i*dtHarmonicMotion/periodHarmonicMotion);
+
+        this->setData(numStepHarmonic, dtHarmonicMotion, harmonicData);
+        needAnalysis = true;
+        this->reset();
+ }
+}
+
+void
+MainWindow::on_periodHarmonicChanged()
+{
+    QString newText =  periodHarmonic->text();
+    double  newDouble = newText.toDouble();
+    if (newDouble != periodHarmonicMotion) {
+        periodHarmonicMotion = newDouble;
+        needAnalysis = true;
+
+        for (int i=0; i<numStepHarmonic; i++)
+            (*harmonicData)(i) = magHarmonicMotion*sin(2*3.14159*i*dtHarmonicMotion/periodHarmonicMotion);
+
+        this->setData(numStepHarmonic, dtHarmonicMotion, harmonicData);
+    }
+    this->reset();
+}
+
+
+void
+MainWindow::on_dtHarmonicChanged()
+{
+    QString newText =  dtHarmonic->text();
+    double  newDouble = newText.toDouble();
+    if (newDouble != dtHarmonicMotion) {
+        dtHarmonicMotion = newDouble;
+
+        needAnalysis = true;
+        if (harmonicData != 0)
+            delete harmonicData;
+        numStepHarmonic = tFinalHarmonicMotion/dtHarmonicMotion+1;
+        harmonicData = new Vector(numStepHarmonic);
+        for (int i=0; i<numStepHarmonic; i++)
+            (*harmonicData)(i) = magHarmonicMotion*sin(2*3.14159*i*dtHarmonicMotion/periodHarmonicMotion);
+
+        this->setData(numStepHarmonic, dtHarmonicMotion, harmonicData);
+        this->reset();
+ }
+}
+
+
+void
+MainWindow::on_tFinalHarmonicChanged()
+{
+    QString newText =  tFinalHarmonic->text();
+    double  newDouble = newText.toDouble();
+    if (newDouble != tFinalHarmonicMotion) {
+        tFinalHarmonicMotion = newDouble;
+        if (harmonicData != 0)
+            delete harmonicData;
+        numStepHarmonic = tFinalHarmonicMotion/dtHarmonicMotion+1;
+        harmonicData = new Vector(numStepHarmonic);
+        for (int i=0; i<numStepHarmonic; i++)
+            (*harmonicData)(i) = magHarmonicMotion*sin(2*3.14159*i*dtHarmonicMotion/periodHarmonicMotion);
+
+        this->setData(numStepHarmonic, dtHarmonicMotion, harmonicData);
+
+        needAnalysis = true;
+        this->reset();
+ }
+}
+
 
 void MainWindow::on_inFloors_editingFinished()
 {
@@ -570,27 +665,48 @@ void MainWindow::on_inDamping_editingFinished()
 
 void MainWindow::on_scaleFactor_editingFinished()
 {
-    QString text =  inScaleFactor->text();
+    QString text =  scaleFactorEQ->text();
     if (text.isNull())
         return;
 
     double textToDouble = text.toDouble();
     if (scaleFactor != textToDouble) {
         scaleFactor = textToDouble;
+        theCurrentRecord->setScaleFactor(scaleFactor);
+        needAnalysis=true;
+
+        double maxValue=0;
+        for (int i = 0; i < numSteps; ++i) {
+            double value = (*motionData)[i] * scaleFactor;
+            time[i]=i*dt;
+            excitationValues[i]=value;
+            if (fabs(value) > maxValue)
+                maxValue = fabs(value);
+        }
+
+        // reset earthquake plot
+        earthquakePlot->clearGraphs();
+        graph = earthquakePlot->addGraph();
+        earthquakePlot->graph(0)->setData(time, excitationValues);
+        earthquakePlot->xAxis->setRange(0, numSteps*dt);
+        earthquakePlot->yAxis->setRange(-maxValue, maxValue);
+        earthquakePlot->axisRect()->setAutoMargins(QCP::msNone);
+        earthquakePlot->axisRect()->setMargins(QMargins(0,0,0,0));
+
+
+        QString textText("pga: "); textText.append(QString::number(maxValue,'g',2)); textText.append(tr("g"));
+        earthquakeText->setText(textText);
+
+        earthquakePlot->replot();
+        earthquakePlot->update();
+
         this->reset();
     }
 }
 
 void MainWindow::on_inGravity_editingFinished()
 {
-    /*
-    QString text =  inGravity->text();
-    double textToDouble = text.toDouble();
-    if (textToDouble != g) {
-        g = textToDouble;
-        this->setBasicModel(numFloors, buildingW, buildingH, storyK, dampingRatio, g);
-    }
-    */
+
 }
 
 void MainWindow::on_inFloorWeight_editingFinished()
@@ -786,10 +902,18 @@ void MainWindow::doAnalysis()
         //
         // create load pattern and add loads
         //
-
-        PathSeries *theSeries = new PathSeries(1, *eqData, dt, g*scaleFactor);
+        PathSeries *theSeries;
+        theSeries = new PathSeries(1, *motionData, dt, g*scaleFactor);
+          /*
+        if (motionTypeValue == 0) {
+            theSeries = new PathSeries(1, *eqData, dt, g*scaleFactor);
+        } else {
+            theSeries = new PathSeries(1, *harmonicData, dtHarmonicMotion, g*magHarmonicMotion);
+        }
+        */
         GroundMotion *theGroundMotion = new GroundMotion(0,0,theSeries);
         LoadPattern *theLoadPattern = new UniformExcitation(*theGroundMotion, 0, 1);
+
         //   theLoadPattern->setTimeSeries(theTimeSeries);
         //   static Vector load(1); load.Zero(); load(0) = 1;
         //   NodalLoad *theLoad = new NodalLoad(0, numFloors, load);
@@ -800,7 +924,6 @@ void MainWindow::doAnalysis()
         //
         // create the analysis
         //
-
 
         AnalysisModel     *theModel = new AnalysisModel();
         CTestNormDispIncr *theTest = new CTestNormDispIncr(1.0e-10, 20, 0);
@@ -832,10 +955,26 @@ void MainWindow::doAnalysis()
 
         int ok = theAnalysis.eigen(numFloors,true);
         const Vector &theEig = theDomain.getEigenvalues();
+        if (eigValues->Size() != numFloors) {
+                eigValues->resize(numFloors);
+        }
+         *eigValues = theEig;
         if (ok == 0)
             for (int i=0; i<numFloors; i++)
                 if (theEig(i) <= 0)
                     ok = -1;
+
+        int numCombo = periodComboBox->count();
+
+        if (numCombo != numFloors) {
+            periodComboBox->clear();
+            QString t1 = QString("Fundamental Period");
+            periodComboBox->addItem(t1);
+            for (int i=1; i<numFloors; i++) {
+                QString t1 = QString("T") + QString::number(i+1);
+                periodComboBox->addItem(t1);
+            }
+        }
 
         if (ok != 0) {
             needAnalysis = false;
@@ -855,8 +994,9 @@ void MainWindow::doAnalysis()
             delete [] theElements;
 
             QMessageBox::warning(this, tr("Application"),
-                                 tr("Eigenvalue Analysis Failed.<p> Possible Causes: Negstive Mass or Negative stiffness.<p> "
-                                    "Negative stiffness due to negative value entered or, if PDelta include, story stiffness - axial load divided by L is negtive."));
+                                 tr("Eigenvalue Analysis Failed.<p> Possible Causes: negstive mass, negative story stiffness, or "
+                                    "if PDelta is included, a story stiffness - axial load divided by L is negtive resulting "
+                                    "in non postive definite stiffness matrix"));
 
             return;
         }
@@ -907,7 +1047,16 @@ void MainWindow::doAnalysis()
 
         // reset values, i.e. slider position, current displayed step...
         maxDispLabel->setText(QString().setNum(maxDisp,'f',2));
-        currentPeriod->setText(QString().setNum(T1,'f',2));
+
+        int num = periodComboBox->currentIndex();
+        double eigenValue = (*eigValues)(num);
+        if (eigenValue <= 0) {
+            currentPeriod->setText(QString("undefined"));
+        } else {
+            double period = 2*3.14159/sqrt((eigenValue));
+            currentPeriod->setText(QString().setNum(period,'f',2));
+        }
+       // currentPeriod->setText(QString().setNum(T1,'f',2));
         needAnalysis = false;
         currentStep = 0;
         //  groupTracer->setGraphKey(0);
@@ -929,18 +1078,7 @@ void MainWindow::doAnalysis()
             storyDriftValues[i]=storyDriftResponses[storyForceTime][i];
             // qDebug() << i*dt << " " << storyForceResponses[storyForceTime][i] << " " << storyDriftResponses[storyForceTime][i];
         }
-        /*
-        qDebug() << nodeResponseValues;
-        QString filename = "/Users/simcenter/DISP";
-        QFile fileout(filename);
-        if (fileout.open(QFile::ReadWrite | QFile::Text)){
-         QTextStream out(&fileout);
-         for (QVector<double>::iterator iter = nodeResponseValues.begin(); iter != nodeResponseValues.end(); iter++){
-             out << *iter << "\n";
-         }
-         fileout.close();
-        }
-*/
+
 
         theNodeResponse->setData(nodeResponseValues,time,numSteps,dt);
         theForceTimeResponse->setData(storyForceValues,time,numSteps,dt);
@@ -1014,25 +1152,45 @@ void MainWindow::on_theSpreadsheet_cellChanged(int row, int column)
         bool ok;
         double textToDouble = text.toDouble(&ok);
         if (column == 0) {
+            if (weights[row] == textToDouble)
+                return;
+
             weights[row] = textToDouble;
             buildingW = 0;
             for (int i=0; i<numFloors; i++)
                 buildingW += weights[i];
             inWeight->setText(QString::number(buildingW));
         } else if (column  == 1) {
+            if (storyHeights[row] == textToDouble)
+                return;
+
             storyHeights[row] = textToDouble;
             for (int i=row; i<numFloors; i++)
                 floorHeights[i+1] = floorHeights[i]+storyHeights[i];
             buildingH = floorHeights[numFloors];
             inHeight->setText(QString::number(buildingH));
+
         } else if (column == 2) {
+            if (k[row] == textToDouble)
+                return;
+
             k[row] = textToDouble;
-        } else if (column == 3) {
+        } else if (column == 3) {         
+            if (fy[row] == textToDouble)
+                return;
+
             fy[row] = textToDouble;
         } else if (column == 4) {
+            if (b[row] == textToDouble)
+                return;
+
             b[row] = textToDouble;
-        } else
+        } else {
+            if (dampRatios[row] == textToDouble)
+                return;
+
             dampRatios[row] = textToDouble;
+        }
 
 
         needAnalysis = true;
@@ -1177,7 +1335,7 @@ MainWindow::setSelectionBoundary(float y1, float y2)
 
         floorMassFrame->setVisible(false);
         storyPropertiesFrame->setVisible(false);
-        spreadSheetFrame->setVisible(false);
+        spreadSheetFrame->setVisible(true);
         floorSelected=-1;
         storySelected=-1;
     }
@@ -1217,91 +1375,140 @@ void MainWindow::replyFinished(QNetworkReply *pReply)
     return;
 }
 
+void MainWindow::on_PeriodSelectionChanged(const QString &arg1) {
+    int num = periodComboBox->currentIndex();
+    double eigenValue = (*eigValues)(num);
+    if (eigenValue <= 0) {
+     currentPeriod->setText(QString("undefined"));
+    } else {
+    double period = 2*3.14159/sqrt((eigenValue));
+    currentPeriod->setText(QString().setNum(period,'f',2));
+    }
+}
 
 
-void MainWindow::on_inMotionSelection_currentTextChanged(const QString &arg1)
+void MainWindow::on_motionTypeSelectionChanged(const QString &arg1)
+{
+    if (arg1 == QString(tr("Harmonic Motion"))) {
+        motionTypeValue = 1;
+        eqMotionFrame->setVisible(false);
+        harmonicMotionFrame->setVisible(true);
+        scaleFactor=1.0;
+        this->setData(numStepHarmonic, dtHarmonicMotion, harmonicData);
+
+    } else {
+        motionTypeValue = 0;
+        harmonicMotionFrame->setVisible(false);
+        eqMotionFrame->setVisible(true);
+        scaleFactor=(scaleFactorEQ->text()).toDouble();
+
+         this->setData(numStepEarthquake, dtEarthquakeMotion, eqData);
+    }
+   // this->doAnalysis();
+    needAnalysis = true;
+    this->reset();
+    return;
+}
+
+
+void MainWindow::setData(int nStep, double deltaT, Vector *data) {
+
+    numSteps = nStep;
+    dt = deltaT;
+    motionData = data;
+
+    double maxValue = 0;
+
+    if (dispResponses != 0) {
+        for (int j=0; j<numFloors+1; j++)
+            delete [] dispResponses[j];
+        delete [] dispResponses;
+    }
+    if (storyForceResponses != 0) {
+        for (int j=0; j<numFloors; j++)
+            delete [] storyForceResponses[j];
+        delete [] storyForceResponses;
+    }
+    if (storyDriftResponses != 0) {
+        for (int j=0; j<numFloors; j++)
+            delete [] storyDriftResponses[j];
+        delete [] storyDriftResponses;
+    }
+
+    dispResponses = new double *[numFloors+1];
+    storyForceResponses = new double *[numFloors];
+    storyDriftResponses = new double *[numFloors];
+
+    for (int i=0; i<numFloors+1; i++) {
+        dispResponses[i] = new double[numSteps+1]; // +1 as doing 0 at start
+        if (i<numFloors) {
+            storyForceResponses[i] = new double[numSteps+1];
+            storyDriftResponses[i] = new double[numSteps+1];
+        }
+    }
+
+
+    excitationValues.resize(numSteps);
+    time.resize(numSteps);
+
+    for (int i = 0; i < numSteps; ++i) {
+        double value = (*motionData)[i] * scaleFactor;
+        time[i]=i*dt;
+        excitationValues[i]=value;
+        if (fabs(value) > maxValue)
+            maxValue = fabs(value);
+    }
+
+    // reset earthquake plot
+    earthquakePlot->clearGraphs();
+    graph = earthquakePlot->addGraph();
+    earthquakePlot->graph(0)->setData(time, excitationValues);
+    earthquakePlot->xAxis->setRange(0, numSteps*dt);
+    earthquakePlot->yAxis->setRange(-maxValue, maxValue);
+    earthquakePlot->axisRect()->setAutoMargins(QCP::msNone);
+    earthquakePlot->axisRect()->setMargins(QMargins(0,0,0,0));
+
+
+    QString textText("pga: "); textText.append(QString::number(maxValue,'g',2)); textText.append(tr("g"));
+    earthquakeText->setText(textText);
+
+    earthquakePlot->replot();
+    earthquakePlot->update();
+
+
+  /*
+    if (groupTracer != 0)
+        delete groupTracer;
+    groupTracer = new QCPItemTracer(earthquakePlot);
+    groupTracer->setGraph(graph);
+    groupTracer->setGraphKey(0);
+    groupTracer->setInterpolating(true);
+    groupTracer->setStyle(QCPItemTracer::tsCircle);
+    groupTracer->setPen(QPen(Qt::red));
+    groupTracer->setBrush(Qt::red);
+    groupTracer->setSize(7);
+*/
+    // reset slider range
+    slider->setRange(0, numSteps);
+
+    needAnalysis = true;
+  //  this->reset();
+  //  myGL->update();
+}
+
+
+void MainWindow::on_inEarthquakeMotionSelectionChanged(const QString &arg1)
 {
     std::map<QString, EarthquakeRecord *>::iterator it;
     it = records.find(arg1);
     if (it != records.end()) {
-        EarthquakeRecord *theRecord = records.at(arg1);
-        numSteps =  theRecord->numSteps;
-        dt =  theRecord->dt;
-        eqData = theRecord->data;
-        double maxValue = 0;
-
-        if (dispResponses != 0) {
-            for (int j=0; j<numFloors+1; j++)
-                delete [] dispResponses[j];
-            delete [] dispResponses;
-        }
-        if (storyForceResponses != 0) {
-            for (int j=0; j<numFloors; j++)
-                delete [] storyForceResponses[j];
-            delete [] storyForceResponses;
-        }
-        if (storyDriftResponses != 0) {
-            for (int j=0; j<numFloors; j++)
-                delete [] storyDriftResponses[j];
-            delete [] storyDriftResponses;
-        }
-
-        dispResponses = new double *[numFloors+1];
-        storyForceResponses = new double *[numFloors];
-        storyDriftResponses = new double *[numFloors];
-
-        for (int i=0; i<numFloors+1; i++) {
-            dispResponses[i] = new double[numSteps+1]; // +1 as doing 0 at start
-            if (i<numFloors) {
-                storyForceResponses[i] = new double[numSteps+1];
-                storyDriftResponses[i] = new double[numSteps+1];
-            }
-        }
-
-
-        excitationValues.resize(numSteps);
-        time.resize(numSteps);
-
-        for (int i = 0; i < numSteps; ++i) {
-            double value = (*eqData)[i];
-            time[i]=i*dt;
-            excitationValues[i]=value;
-            if (fabs(value) > maxValue)
-                maxValue = fabs(value);
-        }
-
-        // reset earthquake plot
-        earthquakePlot->clearGraphs();
-        graph = earthquakePlot->addGraph();
-        earthquakePlot->graph(0)->setData(time, excitationValues);
-        earthquakePlot->xAxis->setRange(0, numSteps*dt);
-        earthquakePlot->yAxis->setRange(-maxValue, maxValue);
-        earthquakePlot->axisRect()->setAutoMargins(QCP::msNone);
-        earthquakePlot->axisRect()->setMargins(QMargins(0,0,0,0));
-
-
-        QString textText("pga: "); textText.append(QString::number(maxValue,'g',3)); textText.append(tr("g"));
-        earthquakeText->setText(textText);
-
-        earthquakePlot->replot();
-
-
-      /*
-        if (groupTracer != 0)
-            delete groupTracer;
-        groupTracer = new QCPItemTracer(earthquakePlot);
-        groupTracer->setGraph(graph);
-        groupTracer->setGraphKey(0);
-        groupTracer->setInterpolating(true);
-        groupTracer->setStyle(QCPItemTracer::tsCircle);
-        groupTracer->setPen(QPen(Qt::red));
-        groupTracer->setBrush(Qt::red);
-        groupTracer->setSize(7);
-*/
-        // reset slider range
-        slider->setRange(0, numSteps);
-
-        this->reset();
+        theCurrentRecord = records.at(arg1);
+        numStepEarthquake =  theCurrentRecord->numSteps;
+        dtEarthquakeMotion =  theCurrentRecord->dt;
+        eqData = theCurrentRecord->data;
+        scaleFactor=theCurrentRecord->getScaleFactor();
+        scaleFactorEQ->setText(QString::number(scaleFactor));
+        this->setData(numStepEarthquake, dtEarthquakeMotion, eqData);
     }
 }
 
@@ -1346,7 +1553,6 @@ void MainWindow::open()
 
 void MainWindow::resetFile()
 {
-
     // reset to original
     this->setBasicModel(5, 5*100, 5*144, 31.54, .05, 386.4);
     this->setSelectionBoundary(-1.,-1.);
@@ -1406,58 +1612,32 @@ void MainWindow::on_addMotion_clicked()
     }
     QString name =theValue.toString();
 
-
-    theValue = jsonObject["numPoints"];
-    if (theValue.isNull()) {
-        QMessageBox::warning(this, tr("Application"),
-                             tr("Cannot find \"numPoints\" attribute in file %1:\n%2.")
-                             .arg(QDir::toNativeSeparators(inputMotionName),
-                                  file.errorString()));
-        return;
-    }
-    int numPoints = theValue.toInt();
-
-
-    theValue = jsonObject["dT"];
-    if (theValue.isNull()) {
-        QMessageBox::warning(this, tr("Application"),
-                             tr("Cannot find \"dT\" attribute in file %1:\n%2.")
-                             .arg(QDir::toNativeSeparators(inputMotionName),
-                                  file.errorString()));
-        return;
-    }
-    double dT = theValue.toDouble();
-
-    theValue = jsonObject["accel_data"];
-    if (theValue.isNull()) {
-        QMessageBox::warning(this, tr("Application"),
-                             tr("Cannot find \"accel_data\" attribute in file %1:\n%2.")
-                             .arg(QDir::toNativeSeparators(inputMotionName),
-                                  file.errorString()));
-        return;
-    }
-    QJsonArray data = theValue.toArray();
-
-    // create new vector & read in data
-    Vector *theData = new Vector(numPoints);
-    for (int i=0; i<numPoints; i++) {
-        theValue = data.at(i);
-        (*theData)[i] = theValue.toDouble();
-    }
-
     // create a record and add to records map
-    EarthquakeRecord *theRecord = new EarthquakeRecord(name, numPoints, dT, theData);
-    records.insert(std::make_pair(name, theRecord));
+    EarthquakeRecord *theRecord = new EarthquakeRecord();
+    int ok = theRecord->inputFromJSON(jsonObject);
 
-    // add the motion to ComboBox, & set it current
-    inMotion->addItem(name);
-    int index = inMotion->findText(name);
-    inMotion->setCurrentIndex(index);
+    if (ok == 0) {
+        // inser into records list
+        records.insert(std::make_pair(name, theRecord));
 
-    // close file
+        // add the motion to ComboBox, & set it current
+        eqMotion->addItem(name);
+        int index = eqMotion->findText(name);
+        eqMotion->setCurrentIndex(index);
+
+        needAnalysis = true;
+        analysisFailed = false;
+
+    } else {
+        QMessageBox::warning(this, tr("Application"),
+                             tr("Cannot find an attribute needed in file %1:\n%2.")
+                             .arg(QDir::toNativeSeparators(inputMotionName),
+                                  file.errorString()));
+    }
+
+    // close file & return
     file.close();
-    needAnalysis = true;
-    analysisFailed = false;
+    return;
 }
 
 bool MainWindow::saveFile(const QString &fileName)
@@ -1488,8 +1668,15 @@ bool MainWindow::saveFile(const QString &fileName)
     json["K"]=storyK;
     json["dampingRatio"]=dampingRatio;
     json["G"]=g;
-    json["currentMotion"]=inMotion->currentText();
-    json["currentMotionIndex"]=inMotion->currentIndex();
+    json["currentMotion"]=eqMotion->currentText();
+    json["currentMotionIndex"]=eqMotion->currentIndex();
+
+    json["periodHarmonic"]=periodHarmonicMotion;
+    json["magHarmonic"]=magHarmonicMotion;
+    json["tFinalHarmonic"]=tFinalHarmonicMotion;
+    json["dtHarmonic"]=dtHarmonicMotion;
+
+    json["motionType"]=motionType->currentIndex();
 
     QJsonArray weightsArray;
     QJsonArray kArray;
@@ -1516,10 +1703,10 @@ bool MainWindow::saveFile(const QString &fileName)
     json["dampRatios"]=dampArray;
 
     QJsonArray motionsArray;
-    int numMotions = inMotion->count();
+    int numMotions = eqMotion->count();
     std::map<QString, EarthquakeRecord *>::iterator iter;
     for (int i=0; i<numMotions; i++) {
-        QString eqName = inMotion->itemText(i);
+        QString eqName = eqMotion->itemText(i);
         iter = records.find(eqName);
         if (iter != records.end()) {
             QJsonObject obj;
@@ -1546,14 +1733,18 @@ bool MainWindow::saveFile(const QString &fileName)
 void MainWindow::copyright()
 {
     QString textCopyright = "\
-            Copyright (c) 2017-2018, The Regents of the University of California (Regents).\
-            All rights reserved.\
-            <p>\
-            Redistribution and use in source and binary forms, with or without \
-            modification, are permitted provided that the following conditions are met:\
+        <p>\
+        The source code is licensed under a BSD 2-Clause License:<p>\
+        \"Copyright (c) 2017-2018, The Regents of the University of California (Regents).\"\
+        All rights reserved.<p>\
+        <p>\
+        Redistribution and use in source and binary forms, with or without \
+        modification, are permitted provided that the following conditions are met:\
         <p>\
          1. Redistributions of source code must retain the above copyright notice, this\
          list of conditions and the following disclaimer.\
+         \
+         \
          2. Redistributions in binary form must reproduce the above copyright notice,\
          this list of conditions and the following disclaimer in the documentation\
          and/or other materials provided with the distribution.\
@@ -1564,7 +1755,7 @@ void MainWindow::copyright()
          DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR\
          ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\
          (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\
+         LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\
             ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\
             (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\
             SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\
@@ -1581,20 +1772,27 @@ void MainWindow::copyright()
             <p>\
             ------------------------------------------------------------------------------------\
             <p>\
+            The compiled binary form of this application is licensed under a GPL Version 3 license.\
+            The licenses are as published by the Free Software Foundation and appearing in the LICENSE file\
+            included in the packaging of this application. \
+            <p>\
+            ------------------------------------------------------------------------------------\
+            <p>\
             This software makes use of the QT packages (unmodified): core, gui, widgets and network\
                                                                      <p>\
                                                                      QT is copyright \"The Qt Company Ltd&quot; and licensed under the GNU Lesser General \
                                                                      Public License (version 3) which references the GNU General Public License (version 3)\
       <p>\
-      These Licenses can be found at: &lt;http://www.gnu.org/licenses/&gt;\
-        <p>\
-         ------------------------------------------------------------------------------------\
-         <p>\
-         This software makes use of the OpenSees Software Framework. OpenSees is copyright \"The Regents of the University of \
-         California\". OpenSees is open-source software whose license can be\
-         found at http://opensees.berkeley.edu.\
-         <p>\
-         ";
+      The licenses are as published by the Free Software Foundation and appearing in the LICENSE file\
+      included in the packaging of this application. \
+      <p>\
+      ------------------------------------------------------------------------------------\
+      <p>\
+      This software makes use of the OpenSees Software Framework. OpenSees is copyright \"The Regents of the University of \
+      California\". OpenSees is open-source software whose license can be\
+      found at http://opensees.berkeley.edu.\
+      <p>\
+      ";
 
 
          QMessageBox msgBox;
@@ -1610,7 +1808,7 @@ void MainWindow::copyright()
 void MainWindow::version()
 {
     QMessageBox::about(this, tr("Version"),
-                       tr("Version 1.0 "));
+                       tr("Version 1.1 "));
 }
 
 void MainWindow::about()
@@ -1673,6 +1871,7 @@ void MainWindow::loadFile(const QString &fileName)
   //
   // clean up old
   //
+
   if (dispResponses != 0) {
     for (int j=0; j<numFloors+1; j++)
       delete [] dispResponses[j];
@@ -1806,7 +2005,7 @@ void MainWindow::loadFile(const QString &fileName)
     }
 
     records.clear();
-    inMotion->clear();
+    eqMotion->clear();
 
     theValue = jsonObject["records"];
     theArray=theValue.toArray();
@@ -1820,7 +2019,7 @@ void MainWindow::loadFile(const QString &fileName)
         QJsonObject theEarthquakeObj = theArray.at(i).toObject();
         theRecord->inputFromJSON(theEarthquakeObj);
         records.insert(std::make_pair(theRecord->name, theRecord));
-        inMotion->addItem(theRecord->name);
+        eqMotion->addItem(theRecord->name);
     }
 
     //
@@ -1828,11 +2027,40 @@ void MainWindow::loadFile(const QString &fileName)
     //
 
     theValue = jsonObject["currentMotionIndex"];
-    inMotion->setCurrentIndex(theValue.toInt());
+    eqMotion->setCurrentIndex(theValue.toInt());
     theValue = jsonObject["currentMotion"];
 
+
+    //
+    // read harmonic data
+    //
+
+    theValue = jsonObject["periodHarmonic"];
+    periodHarmonicMotion=theValue.toDouble();
+    periodHarmonic->setText(QString::number(periodHarmonicMotion));
+
+    theValue = jsonObject["magHarmonic"];
+    magHarmonicMotion=theValue.toDouble();
+    magHarmonic->setText(QString::number(magHarmonicMotion));
+
+    theValue = jsonObject["tFinalHarmonic"];
+    tFinalHarmonicMotion=theValue.toDouble();
+    tFinalHarmonic->setText(QString::number(tFinalHarmonicMotion));
+
+    theValue = jsonObject["dtHarmonic"];
+    dtHarmonicMotion=theValue.toDouble();
+    dtHarmonic->setText(QString::number(dtHarmonicMotion));
+
+
+   // json["motionType"]=motionType->currentIndex();
+    theValue = jsonObject["motionType"];
+    motionType->setCurrentIndex(theValue.toInt());
+    //dtHarmonicMotion=theValue.toDouble();
+    //dtHarmonic->setText(QString::number(dtHarmonicMotion));
+
+
     this->reset();
-    this->on_inMotionSelection_currentTextChanged(theValue.toString());
+    this->on_inEarthquakeMotionSelectionChanged(theValue.toString());
     theNodeResponse->setItem(numFloors);
     theForceDispResponse->setItem(1);
     theForceTimeResponse->setItem(1);
@@ -1966,38 +2194,129 @@ void MainWindow::createInputPanel() {
     inputLayout = new QVBoxLayout;
 
     //
+    // some QStrings to avoid duplication of units
+    //
+
+    QString blank(tr("   "));
+    QString kips(tr("k"  ));
+    QString g(tr("g"  ));
+    QString kipsInch(tr("k/in"));
+    QString inch(tr("in  "));
+    QString sec(tr("sec"));
+    QString percent(tr("\%   "));
+
+    //
     // Create a section line + title + add
     // styleSheet
 
+    QHBoxLayout *inputMotionType = new QHBoxLayout();
     SectionTitle *inTitle = new SectionTitle(this);
     inTitle->setTitle(tr("Input Motion"));
-    inputLayout->addWidget(inTitle);
+    motionType = new QComboBox();
+    inputMotionType->addWidget(inTitle);
+    inputMotionType->addStretch();
+    inputMotionType->addWidget(motionType);
+    QString eqString("Earthquake Motion");
+    QString harmonicString("Harmonic Motion");
+    motionType->addItem(eqString);
+    motionType->addItem(harmonicString);
+
+    inputLayout->addLayout(inputMotionType);
+    motionTypeValue = 0;
+
+    // JUST EARTHQUAKE inputLayout->addWidget(inTitle);
 
     //
-    // create the frame for the input motion selection
+    // create the frame for the earthquake motion selection
     //
 
-    QFrame *inputMotion = new QFrame(); //styleSheet
-    inputMotion->setObjectName(QString::fromUtf8("inputMotion")); //styleSheet
-    QHBoxLayout *inputMotionLayout = new QHBoxLayout();
+    eqMotionFrame = new QFrame(); //styleSheet
+    eqMotionFrame->setObjectName(QString::fromUtf8("inputMotion")); //styleSheet
+
+    QGridLayout *inputMotionLayout = new QGridLayout();
+    //QHBoxLayout *inputMotionLayout = new QHBoxLayout();
     QLabel *sectionTitle = new QLabel();
     sectionTitle->setText(tr("Input Motion Title"));
     sectionTitle->setObjectName(QString::fromUtf8("sectionTitle")); //styleSheet
     QLabel *entryLabel = new QLabel();
     entryLabel->setText(tr("Input Motion"));
 
-    inMotion = new QComboBox();
-    inputMotionLayout->addWidget(entryLabel);
-    inputMotionLayout->addWidget(inMotion);
+    eqMotion = new QComboBox();
+
+    QLabel *scaleLabel = new QLabel(tr("Scale Factor"));
+    scaleFactorEQ = new QLineEdit();
+    scaleFactorEQ->setMaximumWidth(100);
+
+    inputMotionLayout->addWidget(entryLabel,0,0);
+    inputMotionLayout->addWidget(eqMotion,0,1);
+    inputMotionLayout->addWidget(scaleLabel,0,3);
+    inputMotionLayout->addWidget(scaleFactorEQ,0,4);
+   // inputMotionLayout->addStretch();
+
 
     addMotion = new QPushButton("Add");
-    inputMotionLayout->addWidget(addMotion);
-    inputMotion->setLayout(inputMotionLayout);
+    inputMotionLayout->addWidget(addMotion,1,4);
+    eqMotionFrame->setLayout(inputMotionLayout);
+    inputMotionLayout->setColumnStretch(2,1);
     // inputMotion->setFrameStyle(QFrame::Raised);
-    inputMotion->setLineWidth(1);
-    inputMotion->setFrameShape(QFrame::Box);
+    eqMotionFrame->setLineWidth(1);
+    eqMotionFrame->setFrameShape(QFrame::Box);
+    eqMotionFrame->setVisible(true);
 
-    inputLayout->addWidget(inputMotion);
+    inputLayout->addWidget(eqMotionFrame);
+
+    //
+    // create the frame for the harmonic motion
+    //
+
+    // frame to hold it with QGridLayout
+    harmonicMotionFrame = new QFrame(); //style sheet
+    harmonicMotionFrame->setObjectName(QString::fromUtf8("inputMotion")); //styleSheet
+
+    QGridLayout *harmonicLayout = new QGridLayout();
+
+    // the widgets for the layout
+    QLabel *periodLabel = new QLabel(tr("Period:"));
+    QLabel *periodUnit = new QLabel(sec);
+    periodHarmonic = new QLineEdit();
+
+    QLabel *magLabel = new QLabel(tr("PGA:"));
+    QLabel *magUnit = new QLabel(g);
+    magHarmonic = new QLineEdit();
+
+    QLabel *dTLabel = new QLabel(tr("delta T"));
+    dtHarmonic = new QLineEdit();
+    QLabel *dTUnit = new QLabel(sec);
+
+    QLabel *tFinalLabel = new QLabel(tr("tFinal"));
+    tFinalHarmonic = new QLineEdit();
+    QLabel *tFinalUnit = new QLabel(sec);
+
+    // add the widgets to the layout
+    harmonicLayout->addWidget(periodLabel,0,0);
+    harmonicLayout->addWidget(periodHarmonic,0,1);
+    harmonicLayout->addWidget(periodUnit,0,2);
+
+    harmonicLayout->addWidget(magLabel,1,0);
+    harmonicLayout->addWidget(magHarmonic,1,1);
+    harmonicLayout->addWidget(magUnit,1,2);
+
+    harmonicLayout->setColumnStretch(3,1);
+
+    harmonicLayout->addWidget(dTLabel,0,4);
+    harmonicLayout->addWidget(dtHarmonic,0,5);
+    harmonicLayout->addWidget(dTUnit,0,6);
+
+    harmonicLayout->addWidget(tFinalLabel,1,4);
+    harmonicLayout->addWidget(tFinalHarmonic,1,5);
+    harmonicLayout->addWidget(tFinalUnit,1,6);
+
+    harmonicMotionFrame->setVisible(false);
+    harmonicMotionFrame->setLayout(harmonicLayout);
+    harmonicMotionFrame->setLineWidth(1);
+    harmonicMotionFrame->setFrameShape(QFrame::Box);
+
+    inputLayout->addWidget(harmonicMotionFrame);
 
     //
     // Create a section line
@@ -2008,7 +2327,6 @@ void MainWindow::createInputPanel() {
     line->setGeometry(QRect(320, 150, 118, 3));
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Sunken);
-
 
     //
     // Create a section line 2
@@ -2021,14 +2339,6 @@ void MainWindow::createInputPanel() {
     //
     // create to hold major model inputs
     //
-QString blank(tr("   "));
-QString kips(tr("k"  ));
-QString kipsInch(tr("k/in"));
-QString inch(tr("in  "));
-QString sec(tr("sec"));
-QString percent(tr("\%   "));
-
-
 
     QFrame *mainProperties = new QFrame();
     mainProperties->setObjectName(QString::fromUtf8("mainProperties")); //styleSheet
@@ -2091,11 +2401,10 @@ QString percent(tr("\%   "));
     theSpreadsheet = new SimpleSpreadsheetWidget(6, 4, headings, dataTypes,0);
     //theSpreadsheet = new QTableWidget();
     spreadsheetFrameLayout->addWidget(theSpreadsheet, 1.0);
-
+    spreadSheetFrame->setObjectName(QString::fromUtf8("inputMotion")); //styleSheet
     spreadSheetFrame->setLayout(spreadsheetFrameLayout);
     spreadSheetFrame->setLineWidth(1);
     spreadSheetFrame->setFrameShape(QFrame::Box);
-    //theSpreadsheet->setS
 
     inputLayout->addWidget(spreadSheetFrame,1);
     spreadSheetFrame->setVisible(false);
@@ -2120,7 +2429,6 @@ QString percent(tr("\%   "));
     pushButtons->setLineWidth(1);
     pushButtons->setFrameShape(QFrame::Box);
 
-
     inputLayout->addWidget(pushButtons);
 
     mainLayout->addLayout(inputLayout);
@@ -2130,6 +2438,13 @@ QString percent(tr("\%   "));
     //
     // set validators for QlineEdits
     //
+
+    scaleFactorEQ->setValidator(new QDoubleValidator);
+
+    periodHarmonic->setValidator(new QDoubleValidator);
+    magHarmonic->setValidator(new QDoubleValidator);
+    dtHarmonic->setValidator(new QDoubleValidator);
+    tFinalHarmonic->setValidator(new QDoubleValidator);
 
     inFloors->setValidator(new QIntValidator);
     inWeight->setValidator(new QDoubleValidator);
@@ -2146,6 +2461,14 @@ QString percent(tr("\%   "));
     //
     // connect signals & slots
     //
+
+    connect(motionType, SIGNAL(currentIndexChanged(QString)), this, SLOT(on_motionTypeSelectionChanged(QString)));
+    connect(scaleFactorEQ,SIGNAL(editingFinished()),this,SLOT(on_scaleFactor_editingFinished()));
+    connect(magHarmonic,SIGNAL(editingFinished()), this, SLOT(on_magHarmonicChanged()));
+    connect(periodHarmonic,SIGNAL(editingFinished()), this, SLOT(on_periodHarmonicChanged()));
+    connect(dtHarmonic,SIGNAL(editingFinished()), this, SLOT(on_dtHarmonicChanged()));
+    connect(tFinalHarmonic,SIGNAL(editingFinished()), this, SLOT(on_tFinalHarmonicChanged()));
+
     connect(pDeltaBox, SIGNAL(stateChanged(int)), this, SLOT(on_includePDeltaChanged(int)));
     connect(addMotion,SIGNAL(clicked()), this, SLOT(on_addMotion_clicked()));
     connect(inFloors,SIGNAL(editingFinished()), this, SLOT(on_inFloors_editingFinished()));
@@ -2160,7 +2483,7 @@ QString percent(tr("\%   "));
     connect(inStoryHeight, SIGNAL(editingFinished()), this, SLOT(on_inStoryHeight_editingFinished()));
     connect(inStoryK, SIGNAL(editingFinished()), this, SLOT(on_inStoryK_editingFinished()));
 
-    connect(inMotion, SIGNAL(currentIndexChanged(QString)), this, SLOT(on_inMotionSelection_currentTextChanged(QString)));
+    connect(eqMotion, SIGNAL(currentIndexChanged(QString)), this, SLOT(on_inEarthquakeMotionSelectionChanged(QString)));
 
     connect(theSpreadsheet, SIGNAL(cellClicked(int,int)), this, SLOT(on_theSpreadsheet_cellClicked(int,int)));
     connect(theSpreadsheet, SIGNAL(cellEntered(int,int)), this,SLOT(on_theSpreadsheet_cellClicked(int,int)));
@@ -2201,7 +2524,36 @@ void MainWindow::createOutputPanel() {
     firstOutput->setObjectName(QString::fromUtf8("firstOutput"));
     QVBoxLayout *firstOutputLayout = new QVBoxLayout();
     maxDispLabel = createLabelEntry(tr("Max Disp"), firstOutputLayout, 100,100,&inch); //styleSheet
-    currentPeriod= createLabelEntry(tr("Fundamental Period"),firstOutputLayout, 100,100,&sec); //styleSheet
+ //   currentPeriod= createLabelEntry(tr("Fundamental Period"),firstOutputLayout, 100,100,&sec); //styleSheet
+
+    // create combobox for period selection
+    QHBoxLayout *periodLayout = new QHBoxLayout();
+    periodComboBox = new QComboBox();
+    QString t1("FundamentalPeriod");
+    periodComboBox->addItem(t1);
+
+    QLabel *res = new QLabel();
+    res->setMinimumWidth(100);
+    res->setMaximumWidth(100);
+    res->setAlignment(Qt::AlignRight);
+    currentPeriod=res;
+
+    periodLayout->addWidget(periodComboBox);
+    periodLayout->addStretch();
+    periodLayout->addWidget(currentPeriod);
+
+    QLabel *unitLabel = new QLabel();
+    unitLabel->setText(sec);
+    unitLabel->setMinimumWidth(40);
+    unitLabel->setMaximumWidth(100);
+    periodLayout->addWidget(unitLabel);
+
+
+    periodLayout->setSpacing(10);
+    periodLayout->setMargin(0);
+
+    firstOutputLayout->addLayout(periodLayout);
+
     firstOutput->setLayout(firstOutputLayout);
     firstOutput->setLineWidth(1);
     firstOutput->setFrameShape(QFrame::Box);
@@ -2270,6 +2622,7 @@ void MainWindow::createOutputPanel() {
     largeLayout->addLayout(mainLayout); //styleSheet
 
     // signal and slot connects for slider
+    connect(periodComboBox, SIGNAL(currentIndexChanged(QString)), this, SLOT(on_PeriodSelectionChanged(QString)));
     connect(slider, SIGNAL(sliderPressed()),  this, SLOT(on_slider_sliderPressed()));
     connect(slider, SIGNAL(sliderReleased()), this, SLOT(on_slider_sliderReleased()));
     connect(slider, SIGNAL(valueChanged(int)),this, SLOT(on_slider_valueChanged(int)));

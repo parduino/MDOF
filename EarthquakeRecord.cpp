@@ -41,10 +41,13 @@ UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDebug>
+#include <QMessageBox>
+#include <QString>
 
 EarthquakeRecord::EarthquakeRecord()
 {
      data = 0;
+     scaleFactor = 1.0;
 }
 
 EarthquakeRecord::EarthquakeRecord(QString fileName)
@@ -64,11 +67,22 @@ EarthquakeRecord::~EarthquakeRecord()
         delete data;
 }
 
+double
+EarthquakeRecord::getScaleFactor(void){
+    return scaleFactor;
+}
+
+void
+EarthquakeRecord::setScaleFactor(double newFactor){
+    scaleFactor = newFactor;
+}
+
 void
 EarthquakeRecord::outputToJSON(QJsonObject &jsonObj){
     jsonObj["name"]=name;
     jsonObj["dT"]=dt;
     jsonObj["numPoints"]=numSteps;
+    jsonObj["scaleFactor"]=scaleFactor;
     QJsonArray dataValues;
     for (int i=0; i<data->Size(); i++) {
         dataValues.append((*data)[i]);
@@ -76,21 +90,50 @@ EarthquakeRecord::outputToJSON(QJsonObject &jsonObj){
     jsonObj["accel_data"]=dataValues;
 }
 
-void
+int
 EarthquakeRecord::inputFromJSON(QJsonObject &jsonObj){
+
     QJsonValue theValue = jsonObj["name"];
+    if (theValue.isNull() || theValue.isUndefined()) {
+        return -1;
+    }
     name=theValue.toString();
+
+    // get dT, return error if not there
     theValue = jsonObj["dT"];
+    if (theValue.isNull() || theValue.isUndefined()) {
+        return -1;
+    }
     dt=theValue.toDouble();
+
+
     theValue = jsonObj["numPoints"];
+    if (theValue.isNull() || theValue.isUndefined()) {
+        return -1;
+    }
     numSteps=theValue.toInt();
+
+    theValue = jsonObj["scaleFactor"];
+    if (theValue.isUndefined())
+        theValue = 1.0;
+    else if (!theValue.isNull()) {
+        scaleFactor=theValue.toDouble();
+    } else
+       scaleFactor = 1.0;
 
     if (data != 0)
         delete [] data;
+
     data = new Vector(numSteps);
 
     theValue = jsonObj["accel_data"];
+    if (theValue.isNull() || theValue.isUndefined()) {
+        return -1;
+    }
+
     QJsonArray dataPoints = theValue.toArray();
     for (int i=0; i<numSteps; i++)
         (*data)[i] = dataPoints.at(i).toDouble();
+
+    return 0;
 }
