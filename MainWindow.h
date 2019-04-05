@@ -54,7 +54,7 @@ class QCustomPlot;
 class MyGlWidget;
 class QSlider;
 class QCheckBox;
-
+class QStackedWidget;
 
 class MyGlWidget;
 class Vector;
@@ -96,11 +96,18 @@ public:
     friend class PropertiesWidget;
 
 private slots:
-    // main edits
+
+    // slots for harmonic
     void on_periodHarmonicChanged();
     void on_magHarmonicChanged();
     void on_dtHarmonicChanged();
     void on_tFinalHarmonicChanged();
+
+    // slots for pulse
+    void on_magPulseChanged();
+    void on_dtPulseChanged();
+    void on_tFinalPulseChanged();
+
     void on_motionTypeSelectionChanged(const QString& arg1);
     void on_PeriodSelectionChanged(const QString &arg1);
 
@@ -154,13 +161,16 @@ private slots:
     void version();
     void copyright();
 
+    void onOutputSelectionChanged(int index);
+
     void viewNodeResponse();
     void viewStoryResponse();
+    void onAnalysisDurationEditingChanged();
 
 private:
     void updatePeriod();
     void setBasicModel(int numFloors, double buildingW, double buildingH, double storyK, double zeta, double grav);
-    void setData(int numSteps, double dT, Vector *data);
+    void setData(int numSteps, double dT, Vector *data, bool settingOriginalMotion = true);
     void reset(void);
 
     // methods to create some of the main layouts
@@ -172,6 +182,7 @@ private:
 
     QFrame *eqMotionFrame;
     QFrame *harmonicMotionFrame;
+    QFrame *pulseMotionFrame;
 
     // the main layouts created
     QHBoxLayout *mainLayout;
@@ -188,15 +199,11 @@ private:
 
     QComboBox *periodComboBox;
     QComboBox *motionType;
-   // QComboBox *inputMotionType;
-    QComboBox *eqMotion;
-    QPushButton *addMotion;
-    QLineEdit *scaleFactorEQ;
 
-    QLineEdit *periodHarmonic;
-    QLineEdit *magHarmonic;
-    QLineEdit *dtHarmonic;
-    QLineEdit *tFinalHarmonic;
+   // QComboBox *inputMotionType;
+
+    QLineEdit *analysisDuration;
+    double theAnalysisDuration;
 
     // global properties inputs when nothing slected
     QLineEdit *inFloors;
@@ -248,6 +255,10 @@ private:
     ResponseWidget *theForceTimeResponse;
     ResponseWidget *theForceDispResponse;
 
+    QWidget *graphicOutput;
+    QStackedWidget *theStackedWidget;
+    QComboBox *theOutputSelection;
+
     Ui::MainWindow *ui;
 
     //
@@ -271,27 +282,71 @@ private:
 
     double g;
 
+    //
     // properties related to currently selected ground motion
-    int motionTypeValue;
+    //
 
+    int motionTypeValue;
     double dt;
     int numSteps;
     double *gMotion;
     Vector *motionData;
+    Vector *origMotion;      // needed if analysis duration set longer
+    int origMotionNumSteps;  // needed if analysis duration set longer
+
+    double *aMotion;
+    Vector *aData;
+
+
     double scaleFactor;
 
+    Vector *eigValues;
+
+    //
+    // earthquake variables
+    //
     int numStepEarthquake;
     double dtEarthquakeMotion;
     Vector *eqData;
 
+    QComboBox *eqMotion;
+    QPushButton *addMotion;
+    QLineEdit *scaleFactorEQ;
+
+    //
+    // harmonic variables
+    //
+
     int numStepHarmonic;
     double dtHarmonicMotion;
     Vector *harmonicData;
-    Vector *eigValues;
 
     double magHarmonicMotion;
     double periodHarmonicMotion;
     double tFinalHarmonicMotion;
+
+    QLineEdit *periodHarmonic;
+    QLineEdit *magHarmonic;
+    QLineEdit *dtHarmonic;
+    QLineEdit *tFinalHarmonic;
+
+
+    //
+    // pulse variables
+    //
+
+    int numStepPulse;
+    double dtPulseMotion;
+    Vector *pulseData;
+
+    double magPulseMotion;
+    double tFinalPulseMotion;
+
+    QLineEdit *magPulse;
+    QLineEdit *dtPulse;
+    QLineEdit *tFinalPulse;
+
+    // others
 
     bool includePDelta;
     bool needAnalysis;
@@ -325,6 +380,7 @@ private:
     QNetworkAccessManager *manager;
 
     QString currentFile;
+    bool settingUp;
 };
 
 #endif // MAINWINDOW_H

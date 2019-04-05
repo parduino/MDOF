@@ -4,16 +4,9 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <MainWindow.h>
+#include <QSpinBox>
 
 #include <qcustomplot.h>
-
-extern QLineEdit *
-createTextEntry(QString text,
-                QVBoxLayout *theLayout,
-                int minL=100,
-                int maxL=100,
-        QString *unitText =0);
-
 
 
 ResponseWidget::ResponseWidget(MainWindow *mainWindow,
@@ -27,9 +20,27 @@ ResponseWidget::ResponseWidget(MainWindow *mainWindow,
     // create a main layout
     QVBoxLayout *mainLayout = new QVBoxLayout();
 
-    theItemEdit = createTextEntry(label, mainLayout);
-    theItemEdit->setValidator(new QIntValidator);
-    connect(theItemEdit, SIGNAL(editingFinished()), this, SLOT(itemEditChanged()));
+
+    //
+    // spin box
+    //
+
+    dataSET = false;
+    theSpinBox = new QSpinBox();
+    theSpinBox->setMinimum(1);
+    theSpinBox->setMaximum(99);
+    theSpinBox->setMinimumWidth(100);
+    QHBoxLayout *theSpinLayout = new QHBoxLayout();
+    QLabel *spinLabel = new QLabel(label);
+    theSpinLayout->addWidget(spinLabel);
+    theSpinLayout->addWidget(theSpinBox);
+    theSpinLayout->addStretch();
+    connect(theSpinBox,SIGNAL(valueChanged(int)), this, SLOT(itemEditChanged(int)));
+    mainLayout->addLayout(theSpinLayout);
+
+    //
+    // graphic window
+    //
 
     thePlot=new QCustomPlot();
     thePlot->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
@@ -62,27 +73,37 @@ ResponseWidget::getItem() {
 void
 ResponseWidget::setItem(int newItem) {
     theItem = newItem;
-    theItemEdit->setText(QString::number(newItem));
+    theSpinBox->setValue(newItem);
 }
 
 void
-ResponseWidget::itemEditChanged() {
-    int oldItem = theItem;
-    QString textItems =  theItemEdit->text();
-    theItem = textItems.toInt();
-    if (oldItem == theItem)
-        return;
-
-    if (theItem <= 0 || theItem > main->getNumFloors()) {
-        theItem=oldItem;
-        theItemEdit->setText(QString::number(theItem));
-    } else {
+ResponseWidget::itemEditChanged(int theItem) {
+    if (dataSET == true)
         main->setResponse(theItem, mainWindowItem);
-    }
 }
 
+
 void
-ResponseWidget::setData(QVector<double> &data, QVector<double> &time, int numSteps, double dt) {
+ResponseWidget::setData(QVector<double> &data, QVector<double> &time, int numSteps, double dt, int index = -1) {
+
+    dataSET = false;
+    if (index != -1) {
+        theSpinBox->setSingleStep(1);
+        theSpinBox->setValue(index);
+
+    }
+    dataSET = true;
+
+    if (time.size() != data.size()) {
+        qDebug() << "ResponseWidget - setData vectors of differing sizes";
+        return;
+    }
+
+    if (time.size() != numSteps) {
+        qDebug() << "ResponseWidget - setData vector and step size do not agree";
+        return;
+    }
+
 
     thePlot->clearGraphs();
     graph = thePlot->addGraph();
@@ -108,14 +129,20 @@ ResponseWidget::setData(QVector<double> &data, QVector<double> &time, int numSte
 }
 
 void
-ResponseWidget::setData(QVector<double> &data, QVector<double> &x, int numSteps) {
+ResponseWidget::setData(QVector<double> &data, QVector<double> &x, int numSteps, int index) {
+
+    dataSET = false;
+    if (index != -1) {
+        theSpinBox->setRange(1, main->getNumFloors());
+        theSpinBox->setValue(index);
+    }
+    dataSET = true;
 
     thePlot->clearGraphs();
-    //thePlot->clearItems();
-   thePlot->clearPlottables();
-   curve = new QCPCurve(thePlot->xAxis, thePlot->yAxis);
+    thePlot->clearPlottables();
+    curve = new QCPCurve(thePlot->xAxis, thePlot->yAxis);
 
-   curve->setData(x,data);
+    curve->setData(x,data);
 
     //thePlot->graph(0)->setData(x, data, true);
 
@@ -136,7 +163,6 @@ ResponseWidget::setData(QVector<double> &data, QVector<double> &x, int numSteps)
             xMaxValue = xValue;
     }
 
-   //
    thePlot->yAxis->setRange(minValue, maxValue);
    thePlot->xAxis->setRange(xMinValue, xMaxValue);
 

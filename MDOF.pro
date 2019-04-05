@@ -12,7 +12,15 @@ TARGET = MDOF
 TEMPLATE = app
 
 include(OPS_includes.pro)
-include(../SimCenterWidgets/Common/Common.pri)
+include(../SimCenterCommon/Common/Common.pri)
+
+win32 {
+    RC_ICONS = icons/NHERI-MDOF-Icon.ico
+} else {
+    mac {
+    ICON = icons/NHERI-MDOF-Icon.icns
+    }
+}
 
 VERSION=1.1.1
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
